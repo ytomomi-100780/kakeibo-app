@@ -5,7 +5,10 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const Anthropic = require('@anthropic-ai/sdk');
+const sharp = require('sharp');
 require('dotenv').config();
+
+const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024; // Claude APIの5MB制限に余裕を持たせた上限
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,9 +39,20 @@ app.post('/api/analyze-receipt', upload.single('receipt'), async (req, res) => {
   }
 
   try {
+    // 5MB超の画像はリサイズ・圧縮してからAPIへ送信
+    let imageBuffer = req.file.buffer;
+    if (imageBuffer.length > MAX_IMAGE_BYTES) {
+      imageBuffer = await sharp(imageBuffer)
+        .resize({ width: 1600, withoutEnlargement: true }) // 長辺1600pxに縮小
+        .jpeg({ quality: 85 })
+        .toBuffer();
+      console.log(`画像を圧縮: ${req.file.buffer.length} → ${imageBuffer.length} bytes`);
+    }
+
     // 画像をBase64エンコード
-    const base64Image = req.file.buffer.toString('base64');
-    const mediaType = req.file.mimetype;
+    const base64Image = imageBuffer.toString('base64');
+    // sharpでJPEG変換した場合はmimeTypeを上書き
+    const mediaType = imageBuffer === req.file.buffer ? req.file.mimetype : 'image/jpeg';
 
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
