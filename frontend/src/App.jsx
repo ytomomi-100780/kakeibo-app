@@ -19,14 +19,45 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('upload'); // upload | list | charts
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [warnings, setWarnings] = useState([]); // バリデーション警告メッセージ一覧
 
   // 支出データが変わるたびにlocalStorageへ保存
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
   }, [expenses]);
 
+  // レシート解析結果のバリデーション
+  const validateReceipt = (result) => {
+    const msgs = [];
+
+    // 負の金額チェック
+    const negativeItems = result.items.filter((item) => item.price < 0);
+    if (negativeItems.length > 0) {
+      const names = negativeItems.map((i) => `「${i.name}」`).join('、');
+      msgs.push(`金額が負の値です（${names}）。値引き・返金の可能性があります。内容を確認してください。`);
+    }
+
+    // 重複レシートチェック（同一日付・同一合計金額）
+    const incomingTotal = result.total ?? result.items.reduce((s, i) => s + i.price, 0);
+    const isDuplicate = expenses.some((e) => {
+      if (e.date !== result.date) return false;
+      // 同じ日付のレシートグループの合計を算出して比較
+      const sameDateExpenses = expenses.filter((x) => x.date === e.date && x.store === e.store);
+      const groupTotal = sameDateExpenses.reduce((s, x) => s + x.price, 0);
+      return Math.abs(groupTotal - incomingTotal) < 1; // 1円未満の誤差を許容
+    });
+    if (isDuplicate) {
+      msgs.push(`${result.date}・合計¥${incomingTotal.toLocaleString()} のレシートは既に登録されている可能性があります。重複登録にご注意ください。`);
+    }
+
+    return msgs;
+  };
+
   // レシート解析結果を支出リストに追加
   const handleReceiptAnalyzed = (result) => {
+    const newWarnings = validateReceipt(result);
+    if (newWarnings.length > 0) setWarnings(newWarnings);
+
     const newExpenses = result.items.map((item, index) => ({
       id: `${Date.now()}_${index}`,
       store: result.store,
@@ -90,6 +121,13 @@ export default function App() {
             <button onClick={() => setError('')}>×</button>
           </div>
         )}
+
+        {warnings.map((msg, i) => (
+          <div key={i} className="warning-banner">
+            ⚠️ {msg}
+            <button onClick={() => setWarnings((prev) => prev.filter((_, j) => j !== i))}>×</button>
+          </div>
+        ))}
 
         {activeTab === 'upload' && (
           <ReceiptUploader
