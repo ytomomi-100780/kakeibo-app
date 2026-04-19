@@ -8,7 +8,8 @@ const Anthropic = require('@anthropic-ai/sdk');
 const sharp = require('sharp');
 require('dotenv').config();
 
-const MAX_IMAGE_BYTES = 4.5 * 1024 * 1024; // Claude APIの5MB制限に余裕を持たせた上限
+// Base64エンコードで約37%増加するため、5MB制限の逆算値（3.5MB）を閾値にする
+const MAX_IMAGE_BYTES = 3.5 * 1024 * 1024;
 
 const app = express();
 const PORT = process.env.PORT || 3001;
